@@ -1,0 +1,381 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  EDITOR
+  AUTHOR
+  CONTRIBUTOR
+  SUBSCRIBER
+}
+
+model User {
+  id            Int             @id @default(autoincrement())
+  name          String?
+  email         String?         @unique
+  emailVerified DateTime?
+  image         String?
+  username      String?         @unique
+  bio           String?
+  website       String?
+  role          UserRole        @default(SUBSCRIBER)
+  accounts      Account[]
+  sessions      Session[]
+  // Optional for WebAuthn support
+  Authenticator Authenticator[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  posts     Post[]
+  comments  Comment[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            Int
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       Int
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Optional for WebAuthn support
+model Authenticator {
+  credentialID         String  @unique
+  userId               Int
+  providerAccountId    String
+  credentialPublicKey  String
+  counter              Int
+  credentialDeviceType String
+  credentialBackedUp   Boolean
+  transports           String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, credentialID])
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  PRIVATE
+  TRASH
+  REVIEW
+}
+
+enum PostType {
+  POST
+  PAGE
+  ATTACHMENT
+}
+
+model Post {
+  id            Int        @id @default(autoincrement())
+  title         String
+  content       String?
+  excerpt       String?
+  slug          String     @unique
+  status        PostStatus @default(DRAFT)
+  type          PostType   @default(POST)
+  customType    String? // Reference to PostTypeDefinition.name for extensions
+  featuredImage String?
+  authorId      Int
+  parentId      Int?
+  menuOrder     Int        @default(0)
+  commentStatus Boolean    @default(true)
+  pingStatus    Boolean    @default(true)
+  publishedAt   DateTime?
+
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent   Post?  @relation("PostHierarchy", fields: [parentId], references: [id])
+  children Post[] @relation("PostHierarchy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  postData   PostData?
+  postMeta   PostMeta[]
+  categories PostCategory[]
+  tags       PostTag[]
+  comments   Comment[]
+
+  @@index([status])
+  @@index([type])
+  @@index([customType])
+  @@index([publishedAt])
+  @@index([authorId])
+  @@index([slug])
+}
+
+model PostData {
+  id      Int     @id @default(autoincrement())
+  postId  Int
+  content String?
+
+  order Int @default(0)
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([postId])
+}
+
+enum PostMetaType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+  ARRAY
+  DATE
+  URL
+  EMAIL
+  PHONE
+  FILE
+}
+
+model PostMeta {
+  id        Int          @id @default(autoincrement())
+  postId    Int
+  post      Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  metaKey   String
+  metaValue String?
+  metaType  PostMetaType @default(STRING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([postId, metaKey])
+  @@index([metaKey])
+}
+
+model Category {
+  id          Int     @id @default(autoincrement())
+  name        String
+  slug        String  @unique
+  description String?
+  parentId    Int?
+
+  parent   Category?      @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children Category[]     @relation("CategoryHierarchy")
+  posts    PostCategory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Tag {
+  id          Int     @id @default(autoincrement())
+  name        String
+  slug        String  @unique
+  description String?
+
+  posts PostTag[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PostCategory {
+  id         Int @id @default(autoincrement())
+  postId     Int
+  categoryId Int
+
+  post     Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, categoryId])
+}
+
+model PostTag {
+  id     Int @id @default(autoincrement())
+  postId Int
+  tagId  Int
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, tagId])
+}
+
+enum CommentStatus {
+  APPROVED
+  PENDING
+  SPAM
+  TRASH
+}
+
+// Extension system for custom post types and fields
+model PostTypeDefinition {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique // e.g., 'product', 'event', 'portfolio'
+  label       String // Human readable name
+  description String?
+  public      Boolean  @default(true)
+  supports    String[] // features like 'title', 'editor', 'thumbnail', 'comments'
+
+  customFields CustomField[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum CustomFieldType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  DATE
+  SELECT
+  CHECKBOX
+  JSON
+  FILE
+  FILE_IMAGE
+  FILE_VIDEO
+  FILE_AUDIO
+  FILE_PDF
+  FILE_WORD
+  FILE_EXCEL
+  FILE_PPT
+  FILE_OTHER
+}
+
+model CustomField {
+  id         Int             @id @default(autoincrement())
+  name       String // field key
+  label      String // human readable
+  type       CustomFieldType
+  required   Boolean         @default(false)
+  options    String? // JSON string for select options, validation rules, etc.
+  postTypeId Int?
+
+  postType PostTypeDefinition? @relation(fields: [postTypeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, postTypeId])
+}
+
+model Comment {
+  id          Int           @id @default(autoincrement())
+  postId      Int
+  parentId    Int?
+  authorId    Int?
+  authorName  String
+  authorEmail String
+  authorUrl   String?
+  authorIp    String?
+  content     String
+  status      CommentStatus @default(PENDING)
+  agent       String?
+
+  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author   User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  parent   Comment?  @relation("CommentHierarchy", fields: [parentId], references: [id])
+  children Comment[] @relation("CommentHierarchy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([postId])
+  @@index([status])
+}
+
+enum SettingType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+  ARRAY
+}
+
+model Setting {
+  id          Int         @id @default(autoincrement())
+  key         String      @unique
+  value       String?
+  description String? // Human readable description of the setting
+  type        SettingType
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([key])
+}
+
+enum PluginStatus {
+  ENABLED
+  DISABLED
+  ERROR
+}
+
+model Plugin {
+  id            Int          @id @default(autoincrement())
+  pluginId      String       @unique // The plugin's internal ID (from config.name)
+  name          String       // Display name
+  version       String       // Current version
+  description   String?      // Plugin description
+  author        String?      // Plugin author
+  status        PluginStatus @default(DISABLED)
+  
+  // Installation tracking
+  installed     Boolean      @default(false)
+  installedAt   DateTime?    // When first installed
+  
+  // Version tracking
+  installedVersion String?   // Version when first installed
+  lastVersion      String?   // Previous version (for upgrade tracking)
+  
+  // Settings storage
+  settings      Json?        // Plugin-specific settings as JSON
+  
+  // Error tracking
+  lastError     String?      // Last error message
+  errorAt       DateTime?    // When last error occurred
+  
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([pluginId])
+  @@index([status])
+}
