@@ -1,8 +1,10 @@
+"use server";
+
 /**
- * Plugin Manager for LetterPress CMS
+ * Plugin Manager for Letter-Press CMS
  * 
  * Handles plugin loading, lifecycle management, and hook execution.
- * Uses the LetterPress Plugin SDK for type safety and consistent API.
+ * Uses the Letter-Press Plugin SDK for type safety and consistent API.
  * 
  * ARCHITECTURE:
  * - Plugin Discovery: Scans plugins directory for main.js files
@@ -16,7 +18,27 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { db } from './db';
-import { PluginError, PluginInstance, Plugin, PluginHooks } from '@letterpress/plugin-sdk';
+
+// Import types from the Letter-Press Plugin SDK
+import type { Plugin, PluginHooks, PluginContext } from '@letter-press/plugin-sdk/types';
+import { TypeSafeEventEmitter, PluginEventSystemImpl } from '@letter-press/plugin-sdk/hooks';
+
+interface PluginError {
+  pluginId: string;
+  message: string;
+  timestamp: Date;
+  context?: string;
+  stack?: string;
+}
+
+interface PluginInstance {
+  id: string;
+  plugin: Plugin;
+  enabled: boolean;
+  installedAt: Date;
+  version: string;
+  settings: Record<string, any>;
+}
 
 interface HookRegistration {
   callback: (...args: unknown[]) => unknown | Promise<unknown>;
@@ -29,6 +51,12 @@ class PluginManager {
   private hooks = new Map<string, HookRegistration[]>();
   private errors: PluginError[] = [];
   private initialized = false;
+  private eventEmitter = new TypeSafeEventEmitter({
+    maxListeners: 100,
+    enableTiming: true,
+    enableLogging: true
+  });
+  private pluginContexts = new Map<string, PluginContext>();
 
   async initialize(plugins: Plugin[]): Promise<void> {
     if (this.initialized) return;
@@ -56,11 +84,240 @@ class PluginManager {
     }
   }
 
-  async shutdown(): Promise<void> {
-    if (!this.initialized) return;
+  /**
+   * Discover and load plugins from a directory
+   * 
+   * Scans the plugins directory for valid plugin structures and loads them.
+   * Looks for main.js, main.ts, or index.js files as entry points.
+   * 
+   * @param pluginsDir - Directory to scan for plugins
+   */
+  async loadPluginsFromDirectory(pluginsDir: string): Promise<void> {
+    try {
+      const pluginDirs = await fs.readdir(pluginsDir, { withFileTypes: true });
+      const plugins: Plugin[] = [];
 
+      for (const dirent of pluginDirs) {
+        if (!dirent.isDirectory()) continue;
+
+        const pluginDir = path.join(pluginsDir, dirent.name);
+        const plugin = await this.loadPluginFromDirectory(pluginDir);
+        
+        if (plugin) {
+          plugins.push(plugin);
+        }
+      }
+
+      await this.initialize(plugins);
+    } catch (error) {
+      console.error('Failed to load plugins from directory:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load a single plugin from its directory
+   * 
+   * Tries to load main.js, main.ts, or index.js in order of preference.
+   * 
+   * @param pluginDir - Plugin directory path
+   * @returns Plugin instance or null if loading fails
+   */
+  private async loadPluginFromDirectory(pluginDir: string): Promise<Plugin | null> {
+    const entryPoints = ['main.js', 'main.ts', 'index.js'];
+    
+    for (const entryPoint of entryPoints) {
+      const pluginFile = path.join(pluginDir, entryPoint);
+      
+        try {
+          await fs.access(pluginFile);
+          // Use @vite-ignore to suppress analysis warning during SSR
+          const pluginModule = await import(/* @vite-ignore */ pluginFile);
+          const plugin = pluginModule.default || pluginModule;
+        
+        if (!plugin || !plugin.config?.name) {
+          console.warn(`Invalid plugin structure in ${pluginFile}`);
+          continue;
+        }
+
+        console.log(`📁 Discovered plugin: ${plugin.config.name} at ${pluginFile}`);
+        return plugin;
+        
+      } catch (error) {
+        // File doesn't exist or failed to load, try next entry point
+        continue;
+      }
+    }
+
+    console.warn(`No valid plugin entry point found in ${pluginDir}`);
+    return null;
+  }
+
+  /**
+   * Reload a plugin without restarting the system
+   * 
+   * Safely unloads and reloads a plugin, preserving its settings.
+   * Useful for development and plugin updates.
+   * 
+   * @param pluginId - Plugin to reload
+   * @param pluginDir - Optional plugin directory path
+   */
+  async reloadPlugin(pluginId: string, pluginDir?: string): Promise<void> {
+    console.log(`🔄 Reloading plugin: ${pluginId}`);
+    
+    try {
+      // Get current state
+      const currentInstance = this.plugins.get(pluginId);
+      const wasEnabled = currentInstance?.enabled || false;
+      
+      // Unload current version
+      if (currentInstance) {
+        await this.unloadPlugin(pluginId);
+      }
+
+      // Load new version
+      if (pluginDir) {
+        const plugin = await this.loadPluginFromDirectory(pluginDir);
+        if (plugin) {
+          await this.loadPlugin(plugin);
+          
+          // Restore enabled state if it was previously enabled
+          if (wasEnabled) {
+            await this.enablePlugin(pluginId);
+          }
+        }
+      }
+
+      console.log(`✅ Plugin ${pluginId} reloaded successfully`);
+    } catch (error) {
+      await this.recordError(pluginId, error as Error, 'Plugin reload');
+      throw error;
+    }
+  }
+
+  /**
+   * Check for plugin updates and reload if changed
+   * 
+   * Compares file modification times to detect changes.
+   * 
+   * @param pluginsDir - Directory to check for updates
+   */
+  async checkForUpdates(pluginsDir: string): Promise<string[]> {
+    const updatedPlugins: string[] = [];
+    
+    try {
+      const pluginDirs = await fs.readdir(pluginsDir, { withFileTypes: true });
+      
+      for (const dirent of pluginDirs) {
+        if (!dirent.isDirectory()) continue;
+        
+        const pluginDir = path.join(pluginsDir, dirent.name);
+        const instance = this.plugins.get(dirent.name);
+        
+        if (!instance) continue;
+        
+        // Check if main file was modified
+        const entryPoints = ['main.js', 'main.ts', 'index.js'];
+        
+        for (const entryPoint of entryPoints) {
+          const pluginFile = path.join(pluginDir, entryPoint);
+          
+          try {
+            const stats = await fs.stat(pluginFile);
+            
+            if (stats.mtime > instance.installedAt) {
+              console.log(`🔄 Plugin ${dirent.name} has been updated`);
+              await this.reloadPlugin(dirent.name, pluginDir);
+              updatedPlugins.push(dirent.name);
+              break;
+            }
+          } catch (error) {
+            // File doesn't exist, continue
+            continue;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check for plugin updates:', error);
+    }
+    
+    return updatedPlugins;
+  }
+
+  /**
+   * Create plugin context with event system
+   */
+  private createPluginContext(pluginId: string): PluginContext {
+    const eventSystem = new PluginEventSystemImpl(this.eventEmitter, pluginId);
+    
+    const context: PluginContext = {
+      db,
+      config: {},
+      logger: {
+        info: (message: string, meta?: any) => console.log(`[${pluginId}] ${message}`, meta),
+        warn: (message: string, meta?: any) => console.warn(`[${pluginId}] ${message}`, meta),
+        error: (message: string, meta?: any) => console.error(`[${pluginId}] ${message}`, meta),
+        debug: (message: string, meta?: any) => console.debug(`[${pluginId}] ${message}`, meta)
+      },
+      utils: {
+        validateSlug: (slug: string) => /^[a-z0-9-]+$/.test(slug),
+        sanitizeHtml: (content: string) => content.replace(/<script[^>]*>.*?<\/script>/gi, ''),
+        generateExcerpt: (content: string, length = 150) => content.substring(0, length) + (content.length > length ? '...' : '')
+      },
+      hooks: {
+        addAction: (name: string, callback: (...args: any[]) => any, priority = 10) => {
+          this.addHook(pluginId, name, callback, priority);
+        },
+        addFilter: (name: string, callback: (...args: any[]) => any, priority = 10) => {
+          this.addHook(pluginId, name, callback, priority);
+        },
+        doAction: async (name: string, ...args: any[]) => {
+          await this.executeHook(name, ...args);
+        },
+        applyFilters: async (name: string, value: any, ...args: any[]) => {
+          const results = await this.executeHook(name, value, ...args);
+          return results.length > 0 ? results[results.length - 1] : value;
+        }
+      },
+      events: eventSystem
+    };
+
+    this.pluginContexts.set(pluginId, context);
+    return context;
+  }
+
+  /**
+   * Get plugin context
+   */
+  getPluginContext(pluginId: string): PluginContext | undefined {
+    return this.pluginContexts.get(pluginId);
+  }
+
+  /**
+   * Emit system-wide events
+   */
+  async emitEvent(eventName: string, data?: any, meta?: Record<string, any>) {
+    return await this.eventEmitter.emit(eventName, data, { source: 'system', ...meta });
+  }
+
+  /**
+   * Listen to system-wide events
+   */
+  onEvent(eventName: string, listener: any, options?: any) {
+    this.eventEmitter.on(eventName, listener, { pluginId: 'system', ...options });
+  }
+
+  /**
+   * Get event emitter for direct access
+   */
+  getEventEmitter() {
+    return this.eventEmitter;
+  }
+
+  async shutdown(): Promise<void> {
     console.log('🛑 Shutting down plugin system...');
     await this.executeHook('shutdown');
+    await this.emitEvent('system:shutdown');
 
     for (const pluginId of this.plugins.keys()) {
       try {
@@ -70,27 +327,162 @@ class PluginManager {
       }
     }
 
+    // Clean up event system
+    this.eventEmitter.removeAllListeners();
+    this.pluginContexts.clear();
+
     this.initialized = false;
     console.log('🔌 Plugin system shut down');
   }
 
   
 
-  private async loadPlugin(plugin: Plugin): Promise<void> {
+  /**
+   * Validate plugin configuration and structure
+   * 
+   * Performs comprehensive validation of plugin before loading.
+   * 
+   * @param plugin - Plugin to validate
+   * @returns Validation result with errors if any
+   */
+  validatePlugin(plugin: Plugin): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    // Required fields
+    if (!plugin.config) {
+      errors.push('Plugin must have a config object');
+    } else {
+      if (!plugin.config.name) {
+        errors.push('Plugin must have a name');
+      } else if (typeof plugin.config.name !== 'string') {
+        errors.push('Plugin name must be a string');
+      } else if (!/^[a-z0-9-]+$/.test(plugin.config.name)) {
+        errors.push('Plugin name must contain only lowercase letters, numbers, and hyphens');
+      }
+
+      if (!plugin.config.version) {
+        errors.push('Plugin must have a version');
+      } else if (!/^\d+\.\d+\.\d+/.test(plugin.config.version)) {
+        errors.push('Plugin version must follow semantic versioning (x.y.z)');
+      }
+    }
+
+    // Validate hook functions
+    if (plugin.hooks) {
+      for (const [hookName, callback] of Object.entries(plugin.hooks)) {
+        if (callback !== null && callback !== undefined && typeof callback !== 'function') {
+          errors.push(`Hook ${hookName} must be a function or null/undefined`);
+        }
+      }
+    }
+
+    // Validate lifecycle methods
+    const lifecycleMethods = ['install', 'uninstall', 'activate', 'deactivate'];
+    for (const method of lifecycleMethods) {
+      if ((plugin as any)[method] && typeof (plugin as any)[method] !== 'function') {
+        errors.push(`Lifecycle method ${method} must be a function`);
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  /**
+   * Perform health check on a plugin
+   * 
+   * Tests if plugin is functioning correctly and can execute hooks.
+   * 
+   * @param pluginId - Plugin to check
+   * @returns Health check result
+   */
+  async healthCheck(pluginId: string): Promise<{ healthy: boolean; issues: string[] }> {
+    const issues: string[] = [];
+    const instance = this.plugins.get(pluginId);
+
+    if (!instance) {
+      return { healthy: false, issues: ['Plugin not found'] };
+    }
+
+    try {
+      // Check if plugin is properly loaded
+      if (!instance.plugin) {
+        issues.push('Plugin object is missing');
+      }
+
+      // Check if configuration is valid
+      const validation = this.validatePlugin(instance.plugin);
+      if (!validation.isValid) {
+        issues.push(...validation.errors.map(err => `Config: ${err}`));
+      }
+
+      // Test hook execution if plugin has hooks
+      if (instance.enabled && instance.plugin.hooks) {
+        try {
+          // Try a safe test hook execution
+          await this.executeHook('healthCheck', { pluginId, timestamp: Date.now() });
+        } catch (error) {
+          issues.push(`Hook execution failed: ${(error as Error).message}`);
+        }
+      }
+
+      // Check database consistency
+      try {
+        const dbPlugin = await db.plugin.findUnique({ where: { pluginId } });
+        if (!dbPlugin) {
+          issues.push('Plugin not found in database');
+        } else if (dbPlugin.status === 'ERROR') {
+          issues.push(`Plugin in error state: ${dbPlugin.lastError || 'Unknown error'}`);
+        }
+      } catch (error) {
+        issues.push(`Database check failed: ${(error as Error).message}`);
+      }
+
+    } catch (error) {
+      issues.push(`Health check failed: ${(error as Error).message}`);
+    }
+
+    return {
+      healthy: issues.length === 0,
+      issues
+    };
+  }
+
+  /**
+   * Run health checks on all plugins
+   * 
+   * @returns Map of plugin health results
+   */
+  async healthCheckAll(): Promise<Map<string, { healthy: boolean; issues: string[] }>> {
+    const results = new Map();
     
+    for (const pluginId of this.plugins.keys()) {
+      const result = await this.healthCheck(pluginId);
+      results.set(pluginId, result);
+    }
 
-      // Validate plugin structure
-      if (!plugin?.config?.name) {
-        throw new Error('Plugin must export a Plugin object with config.name (use definePlugin from SDK)');
-      }
+    return results;
+  }
 
-      const pluginId = plugin.config.name;
-      console.log(`📦 Loading plugin: ${pluginId}`);
+  private async loadPlugin(plugin: Plugin): Promise<void> {
+    // Validate plugin before loading
+    const validation = this.validatePlugin(plugin);
+    if (!validation.isValid) {
+      throw new Error(`Plugin validation failed: ${validation.errors.join(', ')}`);
+    }
 
-      if (this.plugins.has(pluginId)) {
-        console.warn(`Plugin ${pluginId} already loaded, skipping`);
-        return;
-      }
+    const pluginId = plugin.config.name;
+    console.log(`📦 Loading plugin: ${pluginId}`);
+
+    if (this.plugins.has(pluginId)) {
+      console.warn(`Plugin ${pluginId} already loaded, skipping`);
+      return;
+    }
+
+    // Create plugin context with event system
+    this.createPluginContext(pluginId);
 
       // Get or create database record
       let dbPlugin = await db.plugin.findUnique({ where: { pluginId } });
@@ -148,6 +540,7 @@ class PluginManager {
             data: { installed: true, installedAt: new Date() }
           });
           console.log(`📦 Plugin ${pluginId} installed`);
+          await this.emitEvent('plugin:installed', { pluginId, version: currentVersion });
         } catch (error) {
           await this.recordError(pluginId, error as Error, 'Plugin installation');
           throw error;
@@ -160,6 +553,7 @@ class PluginManager {
           if (plugin.activate) await plugin.activate();
           if (plugin.hooks) this.registerPluginHooks(pluginId, plugin.hooks);
           console.log(`🟢 Plugin ${pluginId} activated`);
+          await this.emitEvent('plugin:activated', { pluginId, version: currentVersion });
         } catch (error) {
           await this.recordError(pluginId, error as Error, 'Plugin activation');
           await db.plugin.update({
@@ -173,8 +567,7 @@ class PluginManager {
       // Store in memory
       this.plugins.set(pluginId, instance);
       console.log(`✅ Plugin ${pluginId} v${currentVersion} loaded (${dbPlugin.status})`);
-      
-    
+      await this.emitEvent('plugin:loaded', { pluginId, version: currentVersion, status: dbPlugin.status });
   }
 
   private registerPluginHooks(pluginId: string, pluginHooks: PluginHooks): void {
@@ -282,6 +675,12 @@ class PluginManager {
       // Remove hooks
       this.removeHooksForPlugin(pluginId);
 
+      // Remove event listeners
+      this.eventEmitter.removePluginListeners(pluginId);
+
+      // Remove plugin context
+      this.pluginContexts.delete(pluginId);
+
       // Remove from registry
       this.plugins.delete(pluginId);
 
@@ -292,6 +691,7 @@ class PluginManager {
       });
 
       console.log(`🗑️  Plugin ${pluginId} unloaded successfully`);
+      await this.emitEvent('plugin:unloaded', { pluginId, version: instance.version });
     } catch (error) {
       await this.recordError(pluginId, error as Error, 'Plugin unloading');
       throw error;
@@ -346,6 +746,7 @@ class PluginManager {
       });
 
       console.log(`🟢 Plugin ${pluginId} enabled successfully`);
+      await this.emitEvent('plugin:enabled', { pluginId, version: plugin.version });
     } catch (error) {
       await this.recordError(pluginId, error as Error, 'Plugin enabling');
       throw error;
@@ -374,6 +775,7 @@ class PluginManager {
       });
 
       console.log(`🔴 Plugin ${pluginId} disabled`);
+      await this.emitEvent('plugin:disabled', { pluginId, version: instance.version });
     } catch (error) {
       await this.recordError(pluginId, error as Error, 'Plugin disabling');
       throw error;
@@ -522,3 +924,11 @@ export const getPluginErrors = (id?: string) => pluginManager.getErrors(id);
 export const isPluginSystemInitialized = () => pluginManager.isInitialized();
 export const getPluginsSummary = () => pluginManager.getSummary();
 export const getPluginDiagnostics = () => pluginManager.getDiagnostics();
+
+// Event system exports
+export const emitSystemEvent = (eventName: string, data?: any, meta?: Record<string, any>) => 
+  pluginManager.emitEvent(eventName, data, meta);
+export const onSystemEvent = (eventName: string, listener: any, options?: any) => 
+  pluginManager.onEvent(eventName, listener, options);
+export const getEventEmitter = () => pluginManager.getEventEmitter();
+export const getPluginContext = (pluginId: string) => pluginManager.getPluginContext(pluginId);

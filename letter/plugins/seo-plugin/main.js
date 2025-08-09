@@ -1,4 +1,4 @@
-import { definePlugin } from '@letterpress/plugin-sdk';
+import { definePlugin } from '@letter-press/plugin-sdk';
 
 // SEO plugin that adds meta fields and improves SEO
 export default definePlugin({
@@ -123,7 +123,7 @@ export default definePlugin({
       type: 'textarea',
       label: 'Default Meta Description',
       description: 'Default meta description for pages without one',
-      default: 'Powered by LetterPress CMS'
+      default: 'Powered by Letter-Press CMS'
     },
     enableOpenGraph: {
       type: 'boolean',

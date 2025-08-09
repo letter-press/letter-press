@@ -1,17 +1,71 @@
-import {  Show, For, createMemo } from "solid-js";
-import { A, createAsync, redirect } from "@solidjs/router";
+import {  Show, For, createMemo, createSignal, type JSX, type Accessor } from "solid-js";
+import { A, createAsync, redirect, useNavigate, action, useAction, type Action } from "@solidjs/router";
 import AdminLayout from "./layout";
-import { getSiteStats, getPluginData } from "../../lib";
-import { Auth } from "~/server/auth";
+import { getSiteStats, getPluginData, createPage } from "../../lib";
+import { getAdminSession } from "~/lib/auth-utils";
+import type { SiteStats, ApiResponse } from "~/lib/types";
+import type { Session } from "@auth/solid-start";
 
-// Server function to get auth and dashboard data
-async function getAdminDashboardData() {
+// Plugin data type
+interface PluginData {
+  all?: Array<{
+    id: string;
+    name: string;
+    version: string;
+    description: string;
+    enabled: boolean;
+    installedAt: Date;
+  }>;
+  enabled: Array<{
+    name: string;
+    version: string;
+    description: string;
+  }>;
+  errors: string[];
+}
+
+// Server action to create a new page
+const createNewPage: Action<[], never> = action(async (): Promise<never> => {
   "use server";
-
-  const session = await Auth();
-  if (!session?.user) {
+  
+  const session = await getAdminSession();
+  
+  if (!session?.user?.id) {
     throw redirect("/login");
   }
+
+  const result = await createPage({
+    title: "Untitled Page",
+    content: "",
+    excerpt: "",
+    slug: `untitled-page-${Date.now()}`,
+    status: "DRAFT",
+    authorId: session.user.id,
+    publishedAt: undefined,
+  });
+
+  if (result.error) {
+    throw new Error(result.error.message || "Failed to create page");
+  }
+
+  if (!result.data?.id) {
+    throw new Error("Failed to create page - no ID returned");
+  }
+
+  // Redirect to edit page
+  throw redirect(`/admin/pages/edit/${result.data.id}`);
+});
+
+// Server function to get auth and dashboard data
+async function getAdminDashboardData(): Promise<{
+  session: Session;
+  stats: SiteStats | null;
+  plugins: PluginData;
+}> {
+  "use server";
+
+  // Use the cached admin session check
+  const session = await getAdminSession();
 
   const statsResult = await getSiteStats();
   const pluginsData = await getPluginData();
@@ -24,18 +78,20 @@ async function getAdminDashboardData() {
 }
 
 // Dashboard component for administrators
-export default function AdminDashboard() {
+export default function AdminDashboard(): JSX.Element {
+  const createPageAction = useAction(createNewPage) as any;
+
   // Get both auth and data from server in one call
   const data = createAsync(() => getAdminDashboardData(), {
     deferStream: true,
   });
 
-  const session = () => data()?.session;
-  const stats = () => data()?.stats;
-  const plugins = () => data()?.plugins;
+  const session = (): Session | undefined => data()?.session;
+  const stats = (): SiteStats | null | undefined => data()?.stats;
+  const plugins = (): PluginData | undefined => data()?.plugins;
 
   // Time-based greeting with user name
-  const getGreeting = createMemo(() => {
+  const getGreeting = createMemo((): string => {
     const hour = new Date().getHours();
     const userData = session()?.user;
     const name = userData?.name || userData?.username || "Administrator";
@@ -48,7 +104,14 @@ export default function AdminDashboard() {
   });
 
   return (
-    <Show when={session()?.user} fallback={<div>Loading...</div>}>
+    <Show 
+      when={session()?.user} 
+      fallback={
+        <div class="min-h-screen flex items-center justify-center">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      }
+    >
       <AdminLayout user={session()!.user}>
         <div class="p-6">
         <div class="max-w-7xl mx-auto">
@@ -59,18 +122,23 @@ export default function AdminDashboard() {
                 {getGreeting()}
               </h1>
               <p class="text-gray-600">
-                Welcome to your LetterPress CMS dashboard. Here's an overview of
+                Welcome to your Letter-Press CMS dashboard. Here's an overview of
                 your site.
               </p>
             </div>
             <div class="mt-4 sm:mt-0">
-              <a
-                href="/admin/pages/new"
-                class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-              >
-                <span class="mr-2">✏️</span>
-                New Post
-              </a>
+              <form action={createNewPage} method="post">
+                <button
+                  type="submit"
+                  disabled={createPageAction.pending}
+                  class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:cursor-not-allowed"
+                >
+                  <Show when={createPageAction.pending} fallback={<span class="mr-2">✏️</span>}>
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  </Show>
+                  {createPageAction.pending ? "Creating..." : "New Post"}
+                </button>
+              </form>
             </div>
           </div>
 
@@ -136,19 +204,25 @@ export default function AdminDashboard() {
               {/* Welcome Message */}
               <div class="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white p-6">
                 <h2 class="text-xl font-bold mb-2">
-                  Welcome to LetterPress CMS
+                  Welcome to Letter-Press CMS
                 </h2>
                 <p class="text-blue-100 mb-4">
                   Your content management system is ready. Start creating
                   amazing content today!
                 </p>
                 <div class="flex space-x-3">
-                  <a
-                    href="/admin/pages/new"
-                    class="inline-flex items-center px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg text-sm font-medium hover:bg-opacity-30 transition-colors"
-                  >
-                    ✏️ Write Your First Post
-                  </a>
+                  <form action={createNewPage} method="post">
+                    <button
+                      type="submit"
+                      disabled={createPageAction.pending}
+                      class="inline-flex items-center px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg text-sm font-medium hover:bg-opacity-30 disabled:bg-opacity-10 transition-colors disabled:cursor-not-allowed"
+                    >
+                      <Show when={createPageAction.pending} fallback={<>✏️ Write Your First Post</>}>
+                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Creating...
+                      </Show>
+                    </button>
+                  </form>
                   <a
                     href="/docs"
                     class="inline-flex items-center px-4 py-2 bg-transparent border border-white border-opacity-30 text-white rounded-lg text-sm font-medium hover:bg-white hover:bg-opacity-10 transition-colors"
@@ -183,13 +257,18 @@ export default function AdminDashboard() {
                         <p class="text-gray-600 mb-4">
                           Get started by creating your first post.
                         </p>
-                        <a
-                          href="/admin/pages/new"
-                          class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          Create First Post
-                        </a>
-                      </div>
+                         <form action={createNewPage} method="post">
+                           <button
+                             type="submit"
+                             disabled={createPageAction.pending}
+                             class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 transition-colors disabled:cursor-not-allowed"
+                           >
+                             <Show when={createPageAction.pending} fallback={<>Create First Post</>}>
+                               <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                               Creating...
+                             </Show>
+                           </button>
+                         </form>                      </div>
                     }
                   >
                     {(siteStats) => (
@@ -204,12 +283,18 @@ export default function AdminDashboard() {
                             <p class="text-gray-600 mb-4">
                               Get started by creating your first post.
                             </p>
-                            <a
-                              href="/admin/pages/new"
-                              class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                            >
-                              Create First Post
-                            </a>
+                            <form action={createNewPage} method="post">
+                              <button
+                                type="submit"
+                                disabled={createPageAction.pending}
+                                class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 transition-colors disabled:cursor-not-allowed"
+                              >
+                                <Show when={createPageAction.pending} fallback={<>Create First Post</>}>
+                                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                  Creating...
+                                </Show>
+                              </button>
+                            </form>
                           </div>
                         }
                       >
@@ -289,7 +374,8 @@ export default function AdminDashboard() {
                 </div>
                 <div class="p-6 space-y-3">
                   <QuickActionButton
-                    href="/admin/pages/new"
+                    action={createNewPage}
+                    pending={createPageAction.pending}
                     icon="✏️"
                     text="Create New Post"
                     description="Write a new blog post"
@@ -301,7 +387,8 @@ export default function AdminDashboard() {
                     description="View and edit all posts"
                   />
                   <QuickActionButton
-                    href="/admin/pages/new"
+                    action={createNewPage}
+                    pending={createPageAction.pending}
                     icon="📄"
                     text="Create New Page"
                     description="Add a new static page"
@@ -342,13 +429,13 @@ export default function AdminDashboard() {
                         <div class="grid grid-cols-2 gap-4">
                           <div class="text-center p-3 bg-green-50 rounded-lg">
                             <div class="text-2xl font-bold text-green-600">
-                              {pluginData().enabled.length}
+                              {pluginData()?.enabled?.length || 0}
                             </div>
                             <div class="text-sm text-green-700">Active</div>
                           </div>
                           <div class="text-center p-3 bg-blue-50 rounded-lg">
                             <div class="text-2xl font-bold text-blue-600">
-                              {pluginData().all.length}
+                              {pluginData()?.all?.length || 0}
                             </div>
                             <div class="text-sm text-blue-700">Total</div>
                           </div>
@@ -440,7 +527,7 @@ export default function AdminDashboard() {
                     <div class="text-xs text-gray-500 space-y-1">
                       <div class="flex justify-between">
                         <span>CMS Version:</span>
-                        <span class="font-medium">LetterPress v1.0.0</span>
+                        <span class="font-medium">Letter-Press v1.0.0</span>
                       </div>
                       <div class="flex justify-between">
                         <span>Last Updated:</span>
@@ -495,7 +582,7 @@ export default function AdminDashboard() {
                                 {post.title}
                               </h4>
                               <div class="flex items-center justify-between text-sm text-gray-500">
-                                <span>{post._count.comments} comments</span>
+                                <span>{post._count?.comments || 0} comments</span>
                                 <span>
                                   {new Date(
                                     post.publishedAt!
@@ -526,14 +613,16 @@ export default function AdminDashboard() {
 }
 
 // Enhanced Stats Card with click functionality
-function StatsCard(props: {
+interface StatsCardProps {
   title: string;
   value: number;
   icon: string;
   color: "blue" | "green" | "yellow" | "purple";
   trend?: string;
   subtitle?: string;
-}) {
+}
+
+function StatsCard(props: StatsCardProps): JSX.Element {
   const colorClasses = {
     blue: "bg-blue-500 hover:bg-blue-600",
     green: "bg-green-500 hover:bg-green-600",
@@ -580,44 +669,89 @@ function StatsCard(props: {
 }
 
 // Enhanced Quick Action Button
-function QuickActionButton(props: {
-  href: string;
+interface QuickActionButtonProps {
+  href?: string;
+  action?: Action<[], never>;
+  pending?: boolean;
   icon: string;
   text: string;
   description: string;
-}) {
+}
+
+function QuickActionButton(props: QuickActionButtonProps): JSX.Element {
   return (
-    <a
-      href={props.href}
-      class="flex items-center p-3 rounded-lg hover:bg-blue-50 transition-all duration-200 group border border-transparent hover:border-blue-200"
+    <Show
+      when={props.action}
+      fallback={
+        <a
+          href={props.href!}
+          class="flex items-center p-3 rounded-lg hover:bg-blue-50 transition-all duration-200 group border border-transparent hover:border-blue-200 w-full text-left"
+        >
+          <div class="flex-shrink-0 mr-3">
+            <span class="text-xl group-hover:scale-110 transition-transform">
+              {props.icon}
+            </span>
+          </div>
+          <div class="flex-1">
+            <p class="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
+              {props.text}
+            </p>
+            <p class="text-xs text-gray-500 group-hover:text-blue-500 transition-colors">
+              {props.description}
+            </p>
+          </div>
+          <div class="flex-shrink-0">
+            <span class="text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all">
+              →
+            </span>
+          </div>
+        </a>
+      }
     >
-      <div class="flex-shrink-0 mr-3">
-        <span class="text-xl group-hover:scale-110 transition-transform">
-          {props.icon}
-        </span>
-      </div>
-      <div class="flex-1">
-        <p class="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
-          {props.text}
-        </p>
-        <p class="text-xs text-gray-500 group-hover:text-blue-500 transition-colors">
-          {props.description}
-        </p>
-      </div>
-      <div class="flex-shrink-0">
-        <span class="text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all">
-          →
-        </span>
-      </div>
-    </a>
+      <form action={props.action} method="post" class="w-full">
+        <button
+          type="submit"
+          disabled={props.pending}
+          class="flex items-center p-3 rounded-lg hover:bg-blue-50 transition-all duration-200 group border border-transparent hover:border-blue-200 w-full text-left disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <div class="flex-shrink-0 mr-3">
+            <Show
+              when={props.pending}
+              fallback={
+                <span class="text-xl group-hover:scale-110 transition-transform">
+                  {props.icon}
+                </span>
+              }
+            >
+              <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+            </Show>
+          </div>
+          <div class="flex-1">
+            <p class="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
+              {props.pending ? "Creating..." : props.text}
+            </p>
+            <p class="text-xs text-gray-500 group-hover:text-blue-500 transition-colors">
+              {props.description}
+            </p>
+          </div>
+          <div class="flex-shrink-0">
+            <span class="text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all">
+              →
+            </span>
+          </div>
+        </button>
+      </form>
+    </Show>
   );
 }
 
 // Enhanced Status Item
-function StatusItem(props: {
+interface StatusItemProps {
   label: string;
   status: "healthy" | "warning" | "error";
-}) {
+}
+
+function StatusItem(props: StatusItemProps): JSX.Element {
   const statusConfig = {
     healthy: {
       color: "bg-green-400",

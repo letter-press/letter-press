@@ -1,6 +1,6 @@
 # Plugin SDK Integration Guide
 
-This guide shows how to integrate the LetterPress Plugin SDK into your LetterPress CMS project.
+This guide shows how to integrate the Letter-Press Plugin SDK into your Letter-Press CMS project.
 
 ## Step 1: Install the SDK
 
@@ -35,7 +35,7 @@ export interface Plugin {
 }
 ```
 
-**SDK types** (`letterpress-plugin-sdk/src/types/index.ts`):
+**SDK types** (`letter-press-plugin-sdk/src/types/index.ts`):
 ```typescript
 export interface Plugin {
   config: PluginConfig;
@@ -160,7 +160,7 @@ Ensure TypeScript can resolve the SDK types:
 {
   "compilerOptions": {
     "paths": {
-      "@letterpress/plugin-sdk": ["../letterpress-plugin-sdk/src/index.ts"]
+      "@letterpress/plugin-sdk": ["../letter-press-plugin-sdk/src/index.ts"]
     }
   }
 }
@@ -172,7 +172,7 @@ Ensure TypeScript can resolve the SDK types:
 
 ```bash
 # Build the SDK
-cd letterpress-plugin-sdk
+cd letter-press-plugin-sdk
 pnpm install
 pnpm build
 ```
@@ -264,7 +264,7 @@ The SDK version provides:
 
 ## Next Steps
 
-1. Review the [API Reference](../letterpress-plugin-sdk/README.md)
-2. Check out [example plugins](../letterpress-plugin-sdk/examples/)
+1. Review the [API Reference](../letter-press-plugin-sdk/README.md)
+2. Check out [example plugins](../letter-press-plugin-sdk/examples/)
 3. Start building your first plugin with the SDK
 4. Contribute improvements back to the SDK

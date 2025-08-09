@@ -1,6 +1,6 @@
 # Admin Dashboard
 
-The LetterPress admin dashboard provides a comprehensive interface for content management, user administration, and system configuration.
+The Letter-Press admin dashboard provides a comprehensive interface for content management, user administration, and system configuration.
 
 ## Dashboard Overview
 

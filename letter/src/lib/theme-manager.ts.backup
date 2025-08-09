@@ -1,0 +1,362 @@
+import { createSignal, createContext, useContext, JSX, ParentComponent, onMount, createEffect } from "solid-js";
+import type { Component } from "solid-js";
+import { 
+  type DarkModePreference, 
+  getDarkModePreference, 
+  setDarkModePreference, 
+  shouldUseDarkMode, 
+  applyDarkModeToDocument,
+  getSystemDarkModePreference
+} from "./dark-mode";
+
+// Theme configuration interface
+export interface ThemeConfig {
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  screenshot?: string;
+  layouts: {
+    default: string;
+    home?: string;
+    page?: string;
+    post?: string;
+    archive?: string;
+  };
+  styles?: {
+    variables?: Record<string, string>;
+    darkVariables?: Record<string, string>;
+    customCSS?: string;
+  };
+  components?: {
+    header?: Component;
+    footer?: Component;
+    navigation?: Component;
+  };
+}
+
+// Layout component props
+export interface LayoutProps {
+  children: JSX.Element;
+  title?: string;
+  description?: string;
+  theme?: string;
+  layoutType?: keyof ThemeConfig['layouts'];
+}
+
+// Navigation item interface
+export interface NavItem {
+  label: string;
+  href: string;
+  children?: NavItem[];
+  external?: boolean;
+}
+
+// Site configuration
+export interface SiteConfig {
+  title: string;
+  description: string;
+  logo?: string;
+  navigation: NavItem[];
+  footer: {
+    copyright: string;
+    links?: NavItem[];
+    social?: {
+      platform: string;
+      url: string;
+      icon: string;
+    }[];
+  };
+}
+
+// Theme context
+interface ThemeContextValue {
+  currentTheme: () => string;
+  setTheme: (theme: string) => void;
+  availableThemes: () => ThemeConfig[];
+  getThemeConfig: (themeName?: string) => ThemeConfig | null;
+  siteConfig: () => SiteConfig;
+  setSiteConfig: (config: Partial<SiteConfig>) => void;
+  // Dark mode
+  darkModePreference: () => DarkModePreference;
+  setDarkModePreference: (preference: DarkModePreference) => void;
+  isDarkMode: () => boolean;
+  toggleDarkMode: () => void;
+}
+
+const ThemeContext = createContext<ThemeContextValue>();
+
+// Default site configuration
+const defaultSiteConfig: SiteConfig = {
+  title: "LetterPress CMS",
+  description: "A powerful content management system built with modern web technologies.",
+  navigation: [
+    { label: "Home", href: "/" },
+    { label: "Pages", href: "/pages" },
+    { label: "Blog", href: "/blog" },
+    { label: "About", href: "/about" },
+  ],
+  footer: {
+    copyright: "© 2025 LetterPress CMS. Built with SolidStart.",
+    links: [
+      { label: "Privacy", href: "/privacy" },
+      { label: "Terms", href: "/terms" },
+      { label: "Contact", href: "/contact" },
+    ],
+    social: [
+      { platform: "GitHub", url: "https://github.com", icon: "🐙" },
+      { platform: "Twitter", url: "https://twitter.com", icon: "🐦" },
+    ],
+  },
+};
+
+// Default theme configuration
+const defaultTheme: ThemeConfig = {
+  name: "default",
+  version: "1.0.0",
+  description: "Default LetterPress theme with clean, responsive design",
+  author: "LetterPress Team",
+  layouts: {
+    default: "DefaultLayout",
+    home: "HomeLayout", 
+    page: "PageLayout",
+    post: "PostLayout",
+  },
+  styles: {
+    variables: {
+      "--primary-color": "#3b82f6",
+      "--secondary-color": "#64748b",
+      "--background-color": "#f8fafc",
+      "--text-color": "#1e293b",
+      "--border-color": "#e2e8f0",
+    },
+    darkVariables: {
+      "--primary-color": "#60a5fa",
+      "--secondary-color": "#9ca3af",
+      "--background-color": "#111827",
+      "--text-color": "#f9fafb",
+      "--border-color": "#374151",
+    },
+  },
+};
+
+// Theme manager class
+export class ThemeManager {
+  private themes = new Map<string, ThemeConfig>();
+  private currentThemeName = "default";
+  private siteConfiguration: SiteConfig = { ...defaultSiteConfig };
+
+  constructor() {
+    this.registerTheme(defaultTheme);
+  }
+
+  registerTheme(config: ThemeConfig) {
+    this.themes.set(config.name, config);
+  }
+
+  getTheme(name?: string): ThemeConfig | null {
+    const themeName = name || this.currentThemeName;
+    return this.themes.get(themeName) || null;
+  }
+
+  getCurrentTheme(): string {
+    return this.currentThemeName;
+  }
+
+  setCurrentTheme(name: string) {
+    if (this.themes.has(name)) {
+      this.currentThemeName = name;
+      this.applyThemeStyles(name);
+      return true;
+    }
+    return false;
+  }
+
+  getAvailableThemes(): ThemeConfig[] {
+    return Array.from(this.themes.values());
+  }
+
+  getSiteConfig(): SiteConfig {
+    return this.siteConfiguration;
+  }
+
+  updateSiteConfig(config: Partial<SiteConfig>) {
+    this.siteConfiguration = { ...this.siteConfiguration, ...config };
+  }
+
+  applyThemeStyles(themeName: string, isDark?: boolean) {
+    if (typeof document === 'undefined') return;
+    
+    const theme = this.getTheme(themeName);
+    if (!theme?.styles) return;
+
+    const root = document.documentElement;
+    
+    // Apply base theme variables
+    if (theme.styles.variables) {
+      Object.entries(theme.styles.variables).forEach(([property, value]) => {
+        root.style.setProperty(property, value);
+      });
+    }
+
+    // Apply dark mode variables if in dark mode
+    if (isDark && theme.styles.darkVariables) {
+      Object.entries(theme.styles.darkVariables).forEach(([property, value]) => {
+        root.style.setProperty(property, value);
+      });
+    }
+
+    // Apply custom CSS if present
+    if (theme.styles.customCSS) {
+      this.injectCustomCSS(theme.styles.customCSS);
+    }
+  }
+
+  private injectCustomCSS(css: string) {
+    if (typeof document === 'undefined') return;
+    
+    const existingStyle = document.getElementById('theme-custom-css');
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+
+    const style = document.createElement('style');
+    style.id = 'theme-custom-css';
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+}
+
+// Global theme manager instance
+export const themeManager = new ThemeManager();
+
+// Theme provider component
+export const ThemeProvider: ParentComponent = (props) => {
+  const [currentTheme, setCurrentTheme] = createSignal(themeManager.getCurrentTheme());
+  const [siteConfig, setSiteConfigSignal] = createSignal(themeManager.getSiteConfig());
+  const [darkModePreference, setDarkModePreferenceSignal] = createSignal<DarkModePreference>('system');
+  const [isDarkMode, setIsDarkMode] = createSignal(false);
+
+  // Initialize dark mode on mount
+  onMount(() => {
+    const preference = getDarkModePreference();
+    setDarkModePreferenceSignal(preference);
+    
+    const shouldBeDark = shouldUseDarkMode(preference);
+    setIsDarkMode(shouldBeDark);
+    applyDarkModeToDocument(shouldBeDark);
+    
+    // Apply theme styles with dark mode consideration
+    themeManager.applyThemeStyles(currentTheme(), shouldBeDark);
+
+    // Listen for system theme changes
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = () => {
+        if (darkModePreference() === 'system') {
+          const shouldBeDark = getSystemDarkModePreference();
+          setIsDarkMode(shouldBeDark);
+          applyDarkModeToDocument(shouldBeDark);
+          themeManager.applyThemeStyles(currentTheme(), shouldBeDark);
+        }
+      };
+      
+      mediaQuery.addEventListener('change', handleChange);
+      
+      // Cleanup
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+  });
+
+  // React to dark mode preference changes
+  createEffect(() => {
+    const preference = darkModePreference();
+    const shouldBeDark = shouldUseDarkMode(preference);
+    setIsDarkMode(shouldBeDark);
+    applyDarkModeToDocument(shouldBeDark);
+    themeManager.applyThemeStyles(currentTheme(), shouldBeDark);
+  });
+
+  // React to theme changes
+  createEffect(() => {
+    themeManager.applyThemeStyles(currentTheme(), isDarkMode());
+  });
+
+  const setTheme = (theme: string) => {
+    if (themeManager.setCurrentTheme(theme)) {
+      setCurrentTheme(theme);
+    }
+  };
+
+  const setSiteConfig = (config: Partial<SiteConfig>) => {
+    themeManager.updateSiteConfig(config);
+    setSiteConfigSignal(themeManager.getSiteConfig());
+  };
+
+  const setDarkModePreferenceHandler = (preference: DarkModePreference) => {
+    setDarkModePreference(preference);
+    setDarkModePreferenceSignal(preference);
+  };
+
+  const toggleDarkMode = () => {
+    const current = darkModePreference();
+    let newPreference: DarkModePreference;
+    
+    if (current === 'system') {
+      // If currently system, toggle to opposite of current system preference
+      newPreference = getSystemDarkModePreference() ? 'light' : 'dark';
+    } else if (current === 'light') {
+      newPreference = 'dark';
+    } else {
+      newPreference = 'light';
+    }
+    
+    setDarkModePreferenceHandler(newPreference);
+  };
+
+  const contextValue: ThemeContextValue = {
+    currentTheme,
+    setTheme,
+    availableThemes: () => themeManager.getAvailableThemes(),
+    getThemeConfig: (themeName?: string) => themeManager.getTheme(themeName),
+    siteConfig,
+    setSiteConfig,
+    darkModePreference,
+    setDarkModePreference: setDarkModePreferenceHandler,
+    isDarkMode,
+    toggleDarkMode,
+  };
+
+  return (
+    <ThemeContext.Provider value={contextValue}>
+      {props.children}
+    </ThemeContext.Provider>
+  );
+};
+
+// Hook to use theme context
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    throw new Error("useTheme must be used within a ThemeProvider");
+  }
+  return context;
+}
+
+// Utility to get current theme configuration
+export function getCurrentThemeConfig(): ThemeConfig | null {
+  return themeManager.getTheme();
+}
+
+// Server-side theme utilities
+export async function getServerThemeConfig(themeName?: string): Promise<ThemeConfig | null> {
+  "use server";
+  // In a real implementation, this would load from database or filesystem
+  return themeManager.getTheme(themeName);
+}
+
+export async function getServerSiteConfig(): Promise<SiteConfig> {
+  "use server";
+  // In a real implementation, this would load from database
+  return themeManager.getSiteConfig();
+}

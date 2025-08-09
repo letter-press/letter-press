@@ -1,19 +1,31 @@
 {
-  "name": "letterpress-monorepo",
+  "name": "letter-press-monorepo",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "clean": "turbo clean",
+    "plugin": "turbo plugin",
+    "plugin:list": "turbo plugin:list",
+    "plugin:health": "turbo plugin:health",
+    "plugin:reload": "turbo plugin:reload",
+    "plugin:diagnostics": "turbo plugin:diagnostics",
+    "dev:letter": "turbo dev --filter=letter",
+    "build:letter": "turbo build --filter=letter",
+    "dev:sdk": "turbo dev --filter=@letter-press/plugin-sdk",
+    "build:sdk": "turbo build --filter=@letter-press/plugin-sdk"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.13.1",
-  "dependencies": {
-    "turbo": "^2.5.5"
-  },
+  "packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748",
   "devDependencies": {
-    "oxlint": "^1.8.0"
+    "oxlint": "^1.8.0",
+    "turbo": "^2.5.5"
   }
 }

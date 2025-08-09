@@ -2,16 +2,18 @@ import { createResource, Show, For, createSignal } from "solid-js";
 import { A, createAsync, redirect } from "@solidjs/router";
 import AdminLayout from "./layout";
 import { getUsers } from "../../lib";
-import { Auth } from "~/server/auth";
+import { getAdminSession } from "~/lib/auth-utils";
+import { RoleManagement, UserRoleCard } from "~/components/admin/role-management";
+import { PermissionGuard, usePermissions } from "~/components/auth/permission-guard";
+import { Permission } from "~/lib/permissions";
+import type { UserRole } from "@prisma/client";
 
 // Server function to get auth and users data
 async function getAdminUsersData() {
   "use server";
 
-  const session = await Auth();
-  if (!session?.user) {
-    throw redirect("/login");
-  }
+  // Use the cached admin session check
+  const session = await getAdminSession();
 
   const result = await getUsers({ limit: 100 });
 
@@ -24,6 +26,7 @@ async function getAdminUsersData() {
 export default function AdminUsers() {
   const [searchTerm, setSearchTerm] = createSignal("");
   const [selectedRole, setSelectedRole] = createSignal("all");
+  const [editingUser, setEditingUser] = createSignal<any>(null);
 
   // Get both auth and data from server in one call
   const data = createAsync(() => getAdminUsersData(), {
@@ -32,6 +35,27 @@ export default function AdminUsers() {
 
   const session = () => data()?.session;
   const users = () => data()?.users || [];
+  
+  // Get user permissions
+  const permissions = () => session()?.user?.role ? usePermissions(session()!.user.role as UserRole) : null;
+
+  const handleRoleChange = async (userId: number, newRole: UserRole) => {
+    try {
+      const response = await fetch('/api/users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, role: newRole })
+      });
+
+      if (!response.ok) throw new Error('Failed to update role');
+      
+      // Refresh data
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to update user role:', error);
+      alert('Failed to update user role. Please try again.');
+    }
+  };
 
   // Filter users based on search and role
   const filteredUsers = () => {
@@ -51,7 +75,14 @@ export default function AdminUsers() {
   };
 
   return (
-    <Show when={session()?.user} fallback={<div>Loading...</div>}>
+    <Show 
+      when={session()?.user} 
+      fallback={
+        <div class="min-h-screen flex items-center justify-center">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      }
+    >
       <AdminLayout user={session()!.user}>
         <div class="p-6">
           <div class="max-w-7xl mx-auto">
@@ -64,7 +95,7 @@ export default function AdminUsers() {
                     User Management
                   </h1>
                   <p class="text-gray-600">
-                    Manage users, roles, and permissions across your LetterPress CMS.
+                    Manage users, roles, and permissions across your Letter-Press CMS.
                   </p>
                 </div>
                 <div class="mt-4 sm:mt-0">
@@ -253,15 +284,34 @@ export default function AdminUsers() {
                                 </div>
                               </td>
                               <td class="px-6 py-4 whitespace-nowrap">
-                                <span class={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full ${
-                                  user.role === 'ADMIN' ? 'bg-red-100 text-red-800 border border-red-200' :
-                                  user.role === 'EDITOR' ? 'bg-green-100 text-green-800 border border-green-200' :
-                                  user.role === 'AUTHOR' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
-                                  user.role === 'CONTRIBUTOR' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                                  'bg-gray-100 text-gray-800 border border-gray-200'
-                                }`}>
-                                  {user.role.toLowerCase()}
-                                </span>
+                                <div class="flex items-center space-x-2">
+                                  <span class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                    user.role === 'ADMIN' ? 'bg-purple-100 text-purple-800' :
+                                    user.role === 'EDITOR' ? 'bg-blue-100 text-blue-800' :
+                                    user.role === 'AUTHOR' ? 'bg-green-100 text-green-800' :
+                                    user.role === 'CONTRIBUTOR' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {user.role === 'ADMIN' && '👑'} 
+                                    {user.role === 'EDITOR' && '✏️'} 
+                                    {user.role === 'AUTHOR' && '📝'} 
+                                    {user.role === 'CONTRIBUTOR' && '🤝'} 
+                                    {user.role === 'SUBSCRIBER' && '👀'} 
+                                    {user.role}
+                                  </span>
+                                  <PermissionGuard
+                                    userRole={session()!.user.role as UserRole}
+                                    permission={Permission.MANAGE_ROLES}
+                                  >
+                                    <button
+                                      onClick={() => setEditingUser(user)}
+                                      class="text-gray-400 hover:text-gray-600 text-xs"
+                                      title="Change role"
+                                    >
+                                      🔧
+                                    </button>
+                                  </PermissionGuard>
+                                </div>
                               </td>
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 <div>{new Date(user.createdAt).toLocaleDateString()}</div>
@@ -318,6 +368,61 @@ export default function AdminUsers() {
                 </Show>
             </div>
           </div>
+          
+          {/* Role Edit Modal */}
+          <Show when={editingUser()}>
+            <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                  Edit User Role
+                </h3>
+                <div class="mb-4">
+                  <div class="flex items-center space-x-3 mb-3">
+                    <Show 
+                      when={editingUser()?.image}
+                      fallback={
+                        <div class="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                          <span class="text-white font-semibold">
+                            {editingUser()?.name?.charAt(0) || 'U'}
+                          </span>
+                        </div>
+                      }
+                    >
+                      <img class="h-10 w-10 rounded-full object-cover" src={editingUser()?.image} alt="" />
+                    </Show>
+                    <div>
+                      <div class="font-medium text-gray-900">
+                        {editingUser()?.name || editingUser()?.username}
+                      </div>
+                      <div class="text-sm text-gray-500">{editingUser()?.email}</div>
+                    </div>
+                  </div>
+                  
+                  <RoleManagement
+                    currentUserRole={session()!.user.role as UserRole}
+                    targetUserRole={editingUser()?.role as UserRole}
+                    onRoleChange={(newRole) => {
+                      const user = editingUser();
+                      if (user) {
+                        handleRoleChange(user.id, newRole);
+                        setEditingUser(null);
+                      }
+                    }}
+                    canManageRoles={permissions()?.can(Permission.MANAGE_ROLES) || false}
+                  />
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                  <button
+                    onClick={() => setEditingUser(null)}
+                    class="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Show>
         </div>
       </AdminLayout>
     </Show>

@@ -128,6 +128,38 @@ export async function getPost(id: number) {
                     metaValue: true
                 }
             },
+            blocks: {
+                select: {
+                    id: true,
+                    postId: true,
+                    blockType: true,
+                    customType: true,
+                    order: true,
+                    parentId: true,
+                    content: true,
+                    attributes: true,
+                    pluginId: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    children: {
+                        select: {
+                            id: true,
+                            postId: true,
+                            blockType: true,
+                            customType: true,
+                            order: true,
+                            parentId: true,
+                            content: true,
+                            attributes: true,
+                            pluginId: true,
+                            createdAt: true,
+                            updatedAt: true
+                        },
+                        orderBy: { order: 'asc' }
+                    }
+                },
+                orderBy: { order: 'asc' }
+            },
             _count: {
                 select: {
                     comments: {
@@ -197,6 +229,24 @@ export async function getPostBySlug(slug: string) {
                     metaKey: true,
                     metaValue: true
                 }
+            },
+            blocks: {
+                select: {
+                    id: true,
+                    postId: true,
+                    blockType: true,
+                    customType: true,
+                    order: true,
+                    parentId: true,
+                    content: true,
+                    attributes: true,
+                    pluginId: true,
+                    createdAt: true,
+                    updatedAt: true,
+                },
+                orderBy: {
+                    order: 'asc'
+                }
             }
         }
     }));
@@ -217,12 +267,12 @@ export async function getPosts(options?: {
     "use server";
     // Optimized: Build where clause more efficiently
     const where: Prisma.PostWhereInput = {};
-    
+
     // Basic filters
     if (options?.status) where.status = options.status;
     if (options?.type) where.type = options.type;
     if (options?.authorId) where.authorId = options.authorId;
-    
+
     // Relation filters
     if (options?.categoryId) {
         where.categories = {
@@ -238,7 +288,7 @@ export async function getPosts(options?: {
             }
         };
     }
-    
+
     // Search optimization
     if (options?.search) {
         const searchTerms = options.search.split(' ').filter(term => term.length > 2);
@@ -439,6 +489,54 @@ export async function getCategories() {
     }));
 }
 
+
+export async function getPublishedPageBySlug(slug: string) {
+    "use server";
+    return tryCatch(db.post.findUnique({
+        where: { slug },
+        select: {
+            id: true,
+            title: true,
+            slug: true,
+            content: true,
+            excerpt: true,
+            status: true,
+            type: true,
+            customType: true,
+            publishedAt: true,
+            createdAt: true,
+            updatedAt: true,
+            menuOrder: true,
+            parentId: true,
+            postMeta: {
+                select: {
+                    id: true,
+                    metaKey: true,
+                    metaValue: true
+                }
+            },
+            author: {
+                select: {
+                    id: true,
+                    username: true,
+                    name: true,
+                    image: true
+                }
+            },
+            categories: {
+                include: {
+                    category: true
+                }
+            },
+            tags: {
+                include: {
+                    tag: true
+                }
+            }
+        }
+    }));
+}
+
 export async function getCategory(id: number) {
     "use server";
     return tryCatch(db.category.findUnique({
@@ -577,7 +675,7 @@ export async function getComments(postId?: number, options?: {
 }) {
     "use server";
     const where: Prisma.CommentWhereInput = {};
-    
+
     if (postId) where.postId = postId;
     if (options?.status) where.status = options.status;
 
@@ -669,6 +767,17 @@ export async function getSettings() {
     "use server";
     return tryCatch(db.setting.findMany({
         orderBy: { key: 'asc' }
+    }));
+}
+
+export async function getCustomFieldsForPostType(postType: string) {
+    "use server";
+    return tryCatch(db.customField.findMany({
+        where: {
+            postType: {
+                name: postType
+            }
+        }
     }));
 }
 

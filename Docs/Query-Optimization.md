@@ -1,6 +1,6 @@
 # Query Optimization
 
-LetterPress implements database query optimizations based on Prisma best practices, focusing on performance, type safety, and efficient data fetching.
+Letter-Press implements database query optimizations based on Prisma best practices, focusing on performance, type safety, and efficient data fetching.
 
 ## Optimization Strategies
 
@@ -500,4 +500,4 @@ CREATE INDEX idx_active_posts ON "Post"("createdAt")
 WHERE status IN ('PUBLISHED', 'DRAFT');
 ```
 
-This optimization strategy ensures LetterPress maintains high performance while handling complex CMS operations and scaling effectively with growing content volumes.
+This optimization strategy ensures Letter-Press maintains high performance while handling complex CMS operations and scaling effectively with growing content volumes.

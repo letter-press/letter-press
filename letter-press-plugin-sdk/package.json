@@ -1,0 +1,64 @@
+{
+    "name": "@letter-press/plugin-sdk",
+    "version": "1.0.0",
+    "type": "module",
+    "description": "Plugin development SDK for Letter-Press CMS",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        },
+        "./types": {
+            "import": "./dist/types/index.js",
+            "types": "./dist/types/index.d.ts"
+        },
+        "./utils": {
+            "import": "./dist/utils/index.js",
+            "types": "./dist/utils/index.d.ts"
+        },
+        "./hooks": {
+            "import": "./dist/hooks/index.js",
+            "types": "./dist/hooks/index.d.ts"
+        }
+    },
+    "scripts": {
+        "build": "tsup",
+        "dev": "tsup --watch",
+        "typecheck": "tsc --noEmit",
+        "clean": "rm -rf dist",
+        "lint": "echo \"Linting not configured for SDK\""
+    },
+    "keywords": [
+        "letter-press",
+        "cms",
+        "plugin",
+        "sdk",
+        "typescript",
+        "solidjs"
+    ],
+    "author": "Letter-Press CMS Team",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "README.md",
+        "CHANGELOG.md"
+    ],
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "tsup": "^8.0.0",
+        "typescript": "^5.0.0"
+    },
+    "peerDependencies": {
+        "solid-js": "^1.8.0"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/letter-press-cms/plugin-sdk.git"
+    },
+    "bugs": {
+        "url": "https://github.com/letter-press-cms/plugin-sdk/issues"
+    },
+    "homepage": "https://letter-press-cms.com/docs/plugin-development"
+}

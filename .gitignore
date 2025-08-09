@@ -6,6 +6,9 @@ dist
 .vinxi
 app.config.timestamp_*.js
 
+# Turbo
+.turbo
+
 # Environment
 .env
 .env*.local

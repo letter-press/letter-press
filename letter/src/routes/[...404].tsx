@@ -4,20 +4,16 @@
 
 import { useLocation, createAsync } from "@solidjs/router";
 import { Show } from "solid-js";
-import { getPostBySlug } from "../lib";
+import { getPublishedPageBySlug } from "../lib";
 
 // Server function to get page by slug
 async function getPageBySlug(slug: string) {
   "use server";
 
-  const result = await getPostBySlug(slug);
+  const result = await getPublishedPageBySlug(slug);
 
   // Only return published pages
-  if (
-    result.data &&
-    result.data.status === "PUBLISHED" &&
-    result.data.type === "PAGE"
-  ) {
+  if (result.data) {
     return result.data;
   }
 
@@ -88,7 +84,7 @@ function PageView(props: { page: any }) {
 
           <div class="prose prose-lg max-w-none">
             <Show
-              when={props.page.content}
+              when={props.page.content && typeof props.page.content === 'string'}
               fallback={
                 <p class="text-gray-500 italic">No content available.</p>
               }

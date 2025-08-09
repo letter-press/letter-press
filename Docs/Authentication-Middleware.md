@@ -1,6 +1,6 @@
 # Authentication Middleware Setup
 
-This document explains the improved authentication middleware setup for LetterPress CMS, following SolidStart best practices.
+This document explains the improved authentication middleware setup for Letter-Press CMS, following SolidStart best practices.
 
 ## Architecture Overview
 

@@ -2,16 +2,14 @@ import { Show, For, createSignal } from "solid-js";
 import { createAsync, redirect } from "@solidjs/router";
 import AdminLayout from "./layout";
 import { getPluginData, togglePluginStatus } from "../../lib";
-import { Auth } from "~/server/auth";
+import { getAdminSession } from "~/lib/auth-utils";
 
 // Server function to get auth and plugins data
 async function getAdminPluginsData() {
   "use server";
 
-  const session = await Auth();
-  if (!session?.user) {
-    throw redirect("/login");
-  }
+  // Use the cached admin session check
+  const session = await getAdminSession();
 
   const pluginsData = await getPluginData();
 
@@ -57,7 +55,7 @@ export default function AdminPlugins() {
   };
 
   const togglePlugin = async (pluginId: string, enabled: boolean) => {
-    const result = await togglePluginStatus(pluginId, !enabled);
+    const result = await togglePluginStatus({ pluginName: pluginId, enabled: !enabled });
     if (result.error) {
       alert(`Failed to ${enabled ? "disable" : "enable"} plugin: ${result.error.message}`);
     } else {
@@ -67,7 +65,14 @@ export default function AdminPlugins() {
   };
 
   return (
-    <Show when={session()?.user} fallback={<div>Loading...</div>}>
+    <Show 
+      when={session()?.user} 
+      fallback={
+        <div class="min-h-screen flex items-center justify-center">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      }
+    >
       <AdminLayout user={session()!.user}>
         <div class="p-6">
           <div class="max-w-7xl mx-auto">
@@ -80,7 +85,7 @@ export default function AdminPlugins() {
                     Plugin Management
                   </h1>
                   <p class="text-gray-600">
-                    Manage your LetterPress CMS plugins and extend functionality.
+                    Manage your Letter-Press CMS plugins and extend functionality.
                   </p>
                 </div>
                 <div class="mt-4 sm:mt-0">

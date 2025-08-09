@@ -15,7 +15,10 @@ import type {
     PostType,
     CommentStatus,
     PostMetaType,
-    CustomFieldType
+    CustomFieldType,
+    ContentBlock,
+    BlockTemplate,
+    BlockType
 } from '@prisma/client';
 
 // ====== EXTENDED TYPES WITH RELATIONS ======
@@ -40,6 +43,34 @@ export type PostWithRelations = Post & {
         tag: Tag;
     }>;
     postMeta?: PostMeta[];
+    blocks?: ContentBlockWithChildren[];
+    _count?: {
+        comments: number;
+    };
+};
+
+// Subset of PostWithRelations for list views (admin panels)
+export type PostListItem = Pick<Post, 'id' | 'title' | 'slug' | 'excerpt' | 'status' | 'type' | 'customType' | 'publishedAt' | 'createdAt' | 'updatedAt'> & {
+    author: {
+        id: number;
+        username: string | null;
+        name: string | null;
+        image: string | null;
+    };
+    categories: Array<{
+        category: {
+            id: number;
+            name: string;
+            slug: string;
+        };
+    }>;
+    tags: Array<{
+        tag: {
+            id: number;
+            name: string;
+            slug: string;
+        };
+    }>;
     _count?: {
         comments: number;
     };
@@ -78,6 +109,219 @@ export type CommentWithRelations = Comment & {
 export type PostTypeWithFields = PostTypeDefinition & {
     customFields: CustomField[];
 };
+
+// ====== BLOCK SYSTEM TYPES ======
+export type ContentBlockWithChildren = ContentBlock & {
+    children?: ContentBlockWithChildren[];
+};
+
+// Import optimized content types
+export type { OptimizedBlockContent, OptimizedBlockAttributes } from './content-optimization';
+
+// Block content types for different block types
+export interface ParagraphBlockContent {
+    text: string;
+    html?: string; // Rich HTML content from Squire
+    format?: {
+        bold?: boolean;
+        italic?: boolean;
+        underline?: boolean;
+        strikethrough?: boolean;
+        color?: string;
+        backgroundColor?: string;
+        fontSize?: string;
+        textAlign?: 'left' | 'center' | 'right' | 'justify';
+    };
+}
+
+export interface HeadingBlockContent {
+    text: string;
+    html?: string; // Rich HTML content from Squire
+    level: 1 | 2 | 3 | 4 | 5 | 6;
+    format?: {
+        color?: string;
+        textAlign?: 'left' | 'center' | 'right';
+    };
+}
+
+export interface ImageBlockContent {
+    url: string;
+    alt?: string;
+    caption?: string;
+    width?: number;
+    height?: number;
+}
+
+export interface QuoteBlockContent {
+    text: string;
+    html?: string; // Rich HTML content from Squire
+    citation?: string;
+    format?: {
+        style?: 'default' | 'large' | 'pull';
+    };
+}
+
+export interface CodeBlockContent {
+    code: string;
+    language?: string;
+    showLineNumbers?: boolean;
+}
+
+export interface ListBlockContent {
+    type: 'ordered' | 'unordered';
+    items: Array<{
+        text: string;
+        children?: ListBlockContent;
+    }>;
+}
+
+export interface ButtonBlockContent {
+    text: string;
+    html?: string; // Rich HTML content from Squire
+    url?: string;
+    style?: 'primary' | 'secondary' | 'outline';
+    size?: 'small' | 'medium' | 'large';
+    alignment?: 'left' | 'center' | 'right';
+    format?: {
+        color?: string;
+        backgroundColor?: string;
+    };
+}
+
+export interface ColumnsBlockContent {
+    columns: number;
+    gap?: 'small' | 'medium' | 'large';
+}
+
+export interface VideoBlockContent {
+    url: string;
+    poster?: string;
+    autoplay?: boolean;
+    controls?: boolean;
+    caption?: string;
+    alt?: string;
+    width?: number;
+    height?: number;
+}
+
+export interface AudioBlockContent {
+    url: string;
+    caption?: string;
+    alt?: string;
+    width?: number;
+    height?: number;
+    autoplay?: boolean;
+    loop?: boolean;
+}
+
+export interface GalleryBlockContent {
+    images: Array<{
+        url: string;
+        alt?: string;
+        caption?: string;
+    }>;
+    columns?: number;
+    linkTo?: 'none' | 'attachment' | 'media';
+}
+
+export interface EmbedBlockContent {
+    url: string;
+    type?: 'youtube' | 'vimeo' | 'twitter' | 'instagram' | 'generic';
+    width?: number;
+    height?: number;
+    caption?: string;
+    alt?: string;
+}
+
+export interface RichTextBlockContent {
+    text: string;
+    html?: string; // Rich HTML content from Squire
+    format?: {
+        bold?: boolean;
+        italic?: boolean;
+        underline?: boolean;
+        strikethrough?: boolean;
+        color?: string;
+        backgroundColor?: string;
+        fontSize?: string;
+        fontFamily?: string;
+        textAlign?: 'left' | 'center' | 'right' | 'justify';
+        lineHeight?: string;
+        letterSpacing?: string;
+    };
+}
+
+// Union type for all block content types
+export type BlockContent = 
+    | ParagraphBlockContent
+    | HeadingBlockContent
+    | ImageBlockContent
+    | QuoteBlockContent
+    | CodeBlockContent
+    | ListBlockContent
+    | ButtonBlockContent
+    | ColumnsBlockContent
+    | VideoBlockContent
+    | AudioBlockContent
+    | GalleryBlockContent
+    | EmbedBlockContent
+    | RichTextBlockContent
+    | Record<string, any>; // For custom blocks
+
+// Block attributes for styling and configuration
+export interface BlockAttributes {
+    className?: string;
+    id?: string;
+    margin?: {
+        top?: string;
+        bottom?: string;
+        left?: string;
+        right?: string;
+    };
+    padding?: {
+        top?: string;
+        bottom?: string;
+        left?: string;
+        right?: string;
+    };
+    backgroundColor?: string;
+    textColor?: string;
+    width?: string;
+    anchor?: string;
+    [key: string]: any; // For custom attributes
+}
+
+// Block definition for the editor
+export interface BlockDefinition {
+    type: BlockType | string;
+    name: string;
+    title: string;
+    description?: string;
+    icon: string;
+    category: 'text' | 'media' | 'layout' | 'embed' | 'widget' | 'custom';
+    supports: {
+        html?: boolean;
+        align?: boolean;
+        anchor?: boolean;
+        customClassName?: boolean;
+        reusable?: boolean;
+    };
+    defaultContent?: BlockContent;
+    defaultAttributes?: BlockAttributes;
+    component: any; // SolidJS component for editing
+    render?: any; // SolidJS component for frontend rendering
+}
+
+// Block registry for managing available blocks
+export interface BlockRegistry {
+    [blockType: string]: BlockDefinition;
+}
+
+// Plugin block registration
+export interface PluginBlockDefinition extends Omit<BlockDefinition, 'type'> {
+    type: string; // Custom type name
+    pluginId: string;
+}
 
 // ====== API RESPONSE TYPES ======
 export type ApiResponse<T> = {
@@ -237,7 +481,15 @@ export type SiteStats = {
         totalCategories: number;
         totalTags: number;
     };
-    popularPosts: PostWithRelations[];
+    popularPosts: Array<{
+        id: number;
+        title: string;
+        slug: string;
+        publishedAt: Date | null;
+        _count?: {
+            comments: number;
+        };
+    }>;
     recentPosts: Array<{
         id: number;
         title: string;
@@ -329,6 +581,72 @@ export type ThemeSettings = {
     registrationEnabled: boolean;
 };
 
+// Color palette with simple descriptive names
+export interface ThemeColors {
+    // Index signature for Prisma JSON compatibility
+    [key: string]: string;
+    
+    // Primary colors
+    primary: string;
+    secondary: string;
+    accent: string;
+    
+    // Text colors
+    text: string;
+    textSecondary: string;
+    textMuted: string;
+    
+    // Background colors
+    background: string;
+    surface: string;
+    surfaceSecondary: string;
+    
+    // Border colors
+    border: string;
+    borderLight: string;
+    
+    // State colors
+    success: string;
+    warning: string;
+    error: string;
+    info: string;
+    
+    // Semantic colors for blocks
+    highlight: string;
+    quote: string;
+    code: string;
+    codeBackground: string;
+}
+
+// Theme configuration with database support
+export interface ThemeConfig {
+    id?: number;
+    name: string;
+    displayName: string;
+    description?: string;
+    author?: string;
+    version: string;
+    
+    // Theme capabilities
+    supportsDarkMode: boolean;
+    isActive?: boolean;
+    isBuiltIn?: boolean;
+    
+    // Color configuration
+    colors: ThemeColors;
+    darkColors?: ThemeColors; // Optional dark mode colors
+    
+    // Layout and styling
+    layouts?: {
+        default?: string;
+        home?: string;
+        page?: string;
+        post?: string;
+        [key: string]: string | undefined;
+    };
+    customCSS?: string;
+}
+
 // Re-export Prisma types for convenience
 export type {
     User,
@@ -345,5 +663,8 @@ export type {
     PostType,
     CommentStatus,
     PostMetaType,
-    CustomFieldType
+    CustomFieldType,
+    ContentBlock,
+    BlockTemplate,
+    BlockType
 };

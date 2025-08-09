@@ -1,6 +1,6 @@
 # Architecture Overview
 
-LetterPress CMS is built with a modern TypeScript stack emphasizing type safety, performance, and extensibility through a plugin system.
+Letter-Press CMS is built with a modern TypeScript stack emphasizing type safety, performance, and extensibility through a plugin system.
 
 ## Technology Stack
 

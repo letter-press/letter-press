@@ -1,6 +1,7 @@
 packages:
   - letter
-  - letterpress-plugin-sdk
+  - letter-press-plugin-sdk
+  - Docs
 
 onlyBuiltDependencies:
   - '@parcel/watcher'

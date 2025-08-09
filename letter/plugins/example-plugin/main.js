@@ -1,11 +1,11 @@
-import { definePlugin } from '@letterpress/plugin-sdk';
+import { definePlugin } from '@letter-press/plugin-sdk';
 
 // Example plugin to demonstrate the plugin system
 export default definePlugin({
   name: 'example-plugin',
   version: '1.0.0',
   description: 'An example plugin demonstrating various features',
-  author: 'LetterPress Team',
+  author: 'Letter-Press Team',
 
   activate: () => {
     console.log('🎉 Example plugin activated');

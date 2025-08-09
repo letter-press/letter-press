@@ -1,4 +1,4 @@
-# LetterPress CMS Plugin System
+# Letter-Press CMS Plugin System
 
 A powerful and flexible plugin system for extending your CMS functionality.
 

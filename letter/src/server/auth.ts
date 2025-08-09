@@ -3,12 +3,14 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { serverEnv } from "~/env/server";
 import { db } from "~/lib/db";
 import Google from "@auth/core/providers/google";
+import Credentials from "@auth/core/providers/credentials";
 import { getRequestEvent } from "solid-js/web";
+import argon2 from "argon2";
 
 declare module "@auth/core/types" {
   export interface Session {
     user: {
-      id: number;
+      id: string;
       role: string;
       username: string | null;
       name: string | null;
@@ -18,7 +20,7 @@ declare module "@auth/core/types" {
   }
 
   export interface User {
-    id: number;
+    id: string;
     role: string;
     username: string | null;
     name?: string | null;
@@ -27,7 +29,7 @@ declare module "@auth/core/types" {
   }
 
   export interface JWT {
-    id: number;
+    id: string;
     role: string;
     username: string | null;
     name?: string | null;
@@ -42,13 +44,94 @@ export const authOptions: SolidAuthConfig = {
     Google({
       clientSecret: serverEnv.GOOGLE_SECRET,
       clientId: serverEnv.GOOGLE_ID,
+    }),
+    Credentials({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
+
+        const user = await db.user.findUnique({
+          where: { email: credentials.email as string },
+          select: { 
+            id: true, 
+            email: true, 
+            password: true, 
+            name: true, 
+            role: true, 
+            username: true,
+            image: true 
+          }
+        });
+
+        if (!user || !user.password) {
+          return null;
+        }
+
+        const isPasswordValid = await argon2.verify(
+          user.password,
+          credentials.password as string
+        );
+
+        if (!isPasswordValid) {
+          return null;
+        }
+
+        return {
+          id: user.id.toString(),
+          email: user.email!,
+          name: user.name,
+          role: user.role,
+          username: user.username,
+          image: user.image,
+        };
+      }
     })
   ],
   session: {
     strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-
-
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === 'production' 
+        ? `__Secure-next-auth.session-token`
+        : `next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      }
+    },
+    callbackUrl: {
+      name: process.env.NODE_ENV === 'production'
+        ? `__Secure-next-auth.callback-url`
+        : `next-auth.callback-url`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      }
+    },
+    csrfToken: {
+      name: process.env.NODE_ENV === 'production'
+        ? `__Host-next-auth.csrf-token`
+        : `next-auth.csrf-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      }
+    }
+  },
   callbacks: {
     jwt: async ({ token, user }) => {
       // When user signs in for the first time
@@ -59,10 +142,10 @@ export const authOptions: SolidAuthConfig = {
         });
 
         if (dbUser) {
-          token.id = dbUser.id;
+          token.id = dbUser.id.toString();
           token.role = dbUser.role;
           token.username = dbUser.username;
-          token.email = dbUser.email;
+          token.email = dbUser.email!;
           token.name = dbUser.name;
           token.picture = dbUser.image;
         }
@@ -72,7 +155,7 @@ export const authOptions: SolidAuthConfig = {
     session: async ({ session, token }) => {
       if (token && session.user && token.id && token.role && token.email) {
         const user = session.user as {
-          id: number;
+          id: string;
           role: string;
           username: string | null;
           name: string | null;
@@ -80,7 +163,7 @@ export const authOptions: SolidAuthConfig = {
           image?: string | null;
         };
 
-        user.id = token.id as number;
+        user.id = token.id as string;
         user.role = token.role as string;
         user.username = token.username as string | null;
         user.name = (token.name as string) || null;
@@ -99,9 +182,11 @@ export const authOptions: SolidAuthConfig = {
     signOut: '/logout',
     error: '/auth/error',
   },
+  useSecureCookies: process.env.NODE_ENV === 'production',
   debug: process.env.NODE_ENV === 'development',
   secret: serverEnv.AUTH_SECRET,
-  basePath: import.meta.env.VITE_AUTH_PATH,
+  trustHost: true,
+  ...(import.meta.env.VITE_AUTH_PATH && { basePath: import.meta.env.VITE_AUTH_PATH }),
 };
 
 

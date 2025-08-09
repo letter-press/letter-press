@@ -1,6 +1,6 @@
 # Database Schema
 
-LetterPress uses a PostgreSQL database with Prisma ORM for type-safe access. The schema supports a flexible CMS structure with extensibility.
+Letter-Press uses a PostgreSQL database with Prisma ORM for type-safe access. The schema supports a flexible CMS structure with extensibility.
 
 ## Entity Relationship Diagram
 

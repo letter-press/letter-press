@@ -1,6 +1,6 @@
 # Plugin Development Guide
 
-LetterPress features a comprehensive plugin system that allows developers to extend functionality through hooks, custom post types, and admin interfaces.
+Letter-Press features a comprehensive plugin system that allows developers to extend functionality through hooks, custom post types, and admin interfaces.
 
 ## Plugin Structure
 
@@ -42,7 +42,7 @@ export default class MyPlugin implements Plugin {
   config: PluginConfig = {
     name: 'My Plugin',
     version: '1.0.0',
-    description: 'A sample plugin for LetterPress',
+    description: 'A sample plugin for Letter-Press',
     author: 'Your Name',
     dependencies: [],
     settings: {
@@ -413,9 +413,9 @@ const testPlugin = async () => {
 ### Package.json
 ```json
 {
-  "name": "letterpress-my-plugin",
+  "name": "letter-press-my-plugin",
   "version": "1.0.0",
-  "description": "A sample plugin for LetterPress CMS",
+  "description": "A sample plugin for Letter-Press CMS",
   "main": "main.ts",
   "keywords": ["letterpress", "cms", "plugin"],
   "author": "Your Name",
@@ -430,7 +430,7 @@ const testPlugin = async () => {
 ```bash
 # Install in plugins directory
 cd plugins/
-git clone https://github.com/user/letterpress-my-plugin.git my-plugin
+git clone https://github.com/user/letter-press-my-plugin.git my-plugin
 ```
 
 The plugin will be automatically discovered and loaded on server restart.
