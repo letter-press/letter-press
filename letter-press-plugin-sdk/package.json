@@ -1,6 +1,6 @@
 {
     "name": "@letter-press/plugin-sdk",
-    "version": "1.0.0",
+    "version": "0.0.1",
     "type": "module",
     "description": "Plugin development SDK for Letter-Press CMS",
     "main": "dist/index.js",

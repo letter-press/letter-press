@@ -430,7 +430,7 @@ const testPlugin = async () => {
 ```bash
 # Install in plugins directory
 cd plugins/
-git clone https://github.com/user/letter-press-my-plugin.git my-plugin
+git clone https://github.com/letter-press/letter-press-my-plugin.git my-plugin
 ```
 
 The plugin will be automatically discovered and loaded on server restart.

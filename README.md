@@ -92,4 +92,4 @@ Documentation is built with VitePress and automatically deployed to GitHub Pages
 - **Auto-deployment**: Pushes to `main` with changes in `Docs/` trigger deployment
 - **Manual deployment**: Use GitHub Actions workflow dispatch
 
-See [`.github/DOCS_DEPLOYMENT.md`](.github/DOCS_DEPLOYMENT.md) for setup instructions.
+Documentation is automatically deployed to GitHub Pages from the `Docs/` directory.
