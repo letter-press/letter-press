@@ -33,24 +33,29 @@ jobs:
   # Build job
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Not needed if lastUpdated is not enabled
+          submodules: recursive
 
-      - name: Setup Node
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
-          cache: 'pnpm'
-          corepack: true
+          node-version: lts/*
+          cache: "pnpm"
+      # Install dependencies using the cached pnpm setup
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile # Use --frozen-lockfile for CI environments
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Build with VitePress
         run: |
