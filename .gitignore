@@ -31,3 +31,5 @@ gitignore
 Thumbs.db
 
 .dev.vars*
+
+.vitepress
