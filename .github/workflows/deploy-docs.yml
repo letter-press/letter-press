@@ -42,17 +42,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install pnpm
-        run: corepack prepare pnpm@latest --activate
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
+          node-version: 'lts/*'
+          cache: 'pnpm'
+          corepack: true
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
