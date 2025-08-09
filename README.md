@@ -6,6 +6,7 @@ A modern monorepo setup for Letter-Press CMS using Turbo for build orchestration
 
 - **`letter/`** - Main Letter-Press CMS application (SolidStart)
 - **`letter-press-plugin-sdk/`** - Plugin development SDK
+- **`Docs/`** - VitePress documentation (auto-deploys to GitHub Pages)
 
 ## Development
 
@@ -81,3 +82,14 @@ Letter-Press/
 4. **Work on features**: Edit code in any package
 5. **Build everything**: `pnpm build`
 6. **Type check**: `pnpm typecheck`
+
+## Documentation
+
+Documentation is built with VitePress and automatically deployed to GitHub Pages:
+
+- **Local development**: `cd Docs && pnpm dev`
+- **Build docs**: `cd Docs && pnpm build`
+- **Auto-deployment**: Pushes to `main` with changes in `Docs/` trigger deployment
+- **Manual deployment**: Use GitHub Actions workflow dispatch
+
+See [`.github/DOCS_DEPLOYMENT.md`](.github/DOCS_DEPLOYMENT.md) for setup instructions.

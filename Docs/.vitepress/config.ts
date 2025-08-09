@@ -4,12 +4,17 @@ export default defineConfig({
   title: 'Letter-Press',
   description: 'Modern CMS with Plugin Architecture',
   
+  // Set base path for GitHub Pages deployment
+  // Update this to match your actual repository name
+  base: '/letter-press/',
+  
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Plugin Development', link: '/Plugin-Development' },
       { text: 'API', link: '/API-Reference' },
-      { text: 'All Docs', link: '/README' }
+      { text: 'All Docs', link: '/README' },
+      { text: 'Quick Reference', link: '/QUICK_REFERENCE' }
     ],
 
     sidebar: [
@@ -45,13 +50,14 @@ export default defineConfig({
       {
         text: 'Support',
         items: [
-          { text: 'Troubleshooting', link: '/Troubleshooting' }
+          { text: 'Troubleshooting', link: '/Troubleshooting' },
+          { text: 'Quick Reference', link: '/QUICK_REFERENCE' }
         ]
       }
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/your-repo/letterpress' }
+      { icon: 'github', link: 'https://github.com/your-username/letter-press' }
     ],
 
     search: {
